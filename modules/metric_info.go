@@ -23,50 +23,56 @@ package modules
 import (
 	"context"
 	"log"
+	"strings"
+	"telemetruum/leaf-exporter/cli"
 
 	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
-type OrchInfoCollector struct {
-	Type      string
-	AgentId   string
-	AgentName string
-	gauge     metric.Int64ObservableGauge
-	gaugeOld  metric.Int64ObservableGauge
+type InfoCollector struct {
+	gauge metric.Int64ObservableGauge
 }
 
-func (c *OrchInfoCollector) Init(logger zerolog.Logger) {
+func (c *InfoCollector) Init(logger zerolog.Logger) {
 
 }
 
-func (c *OrchInfoCollector) GetMetrics(meter metric.Meter) []metric.Observable {
+func (c *InfoCollector) GetMetrics(meter metric.Meter) []metric.Observable {
 
 	if c.gauge == nil {
-		gauge, err := meter.Int64ObservableGauge("tlum_orch_info", metric.WithDescription("info about the orchestrator"))
+		gauge, err := meter.Int64ObservableGauge("tlum_info", metric.WithDescription("info about the Telemetruum Installation"))
 		if err != nil {
 			log.Fatal(err)
 		}
 		c.gauge = gauge
-
-		gaugeOld, err := meter.Int64ObservableGauge("tlum_ocm_agent_info", metric.WithDescription("info about the orchestrator. Legacy, do not use"))
-		if err != nil {
-			log.Fatal(err)
-		}
-		c.gaugeOld = gaugeOld
 	}
 
-	return []metric.Observable{c.gauge, c.gaugeOld}
+	return []metric.Observable{c.gauge}
 }
 
-func (c *OrchInfoCollector) CreateObservations(ctx context.Context, o metric.Observer, logger zerolog.Logger) {
-	if c.Type != "" {
-		opt := metric.WithAttributes(
-			attribute.Key("type").String(c.Type),
-			attribute.Key("agent-id").String(c.AgentId),
-			attribute.Key("agent-name").String(c.AgentName))
+func (c *InfoCollector) CreateObservations(ctx context.Context, o metric.Observer, logger zerolog.Logger) {
+
+	if *cli.InfoProps != "" {
+		pairs := strings.Split(*cli.InfoProps, ",")
+
+		metricsAttributes := []attribute.KeyValue{}
+
+		for _, p := range pairs {
+			tokens := strings.Split(p, "=")
+
+			if len(tokens) != 2 {
+				logger.Error().Msgf("Error parsing info prop '%s'. It should be in the form <name>=<value>", p)
+				continue
+			}
+
+			metricsAttributes = append(metricsAttributes, attribute.Key("prop_"+tokens[0]).String(tokens[1]))
+		}
+
+		opt := metric.WithAttributeSet(attribute.NewSet(metricsAttributes...))
 
 		o.ObserveInt64(c.gauge, 1, opt)
 	}
+
 }

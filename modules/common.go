@@ -1,6 +1,6 @@
 /*
-ICOS Telemetruum Agent
-Copyright © 2022-2024 Engineering Ingegneria Informatica S.p.A.
+ICOS Telemetruum Leaf Exporter
+Copyright © 2022 - 2025 Engineering Ingegneria Informatica S.p.A.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,7 +29,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"go.opentelemetry.io/otel/metric"
 	api "go.opentelemetry.io/otel/metric"
 )
 
@@ -44,12 +43,14 @@ func (c *AsyncCollectorRunner[T]) AppendAsyncDataProvider(dp func(context.Contex
 	c.Providers = append(c.Providers, dp)
 }
 
-func (c *AsyncCollectorRunner[T]) Init(meter metric.Meter) {
+func (c *AsyncCollectorRunner[T]) Init(meter api.Meter) {
 
 	if c.Interval == 0 {
 		c.Interval = 60 * time.Second
 		c.Logger.Warn().Msg("Interval was 0: set to 60s")
 	}
+
+	c.Collector.Init(c.Logger)
 
 	_, err := meter.RegisterCallback(func(ctx context.Context, o api.Observer) error {
 		c.Collector.CreateObservations(ctx, o, c.Logger)
@@ -76,7 +77,8 @@ func (c *AsyncCollectorRunner[T]) Start(ctx context.Context) {
 
 type AsyncCollector interface {
 	CreateObservations(context.Context, api.Observer, zerolog.Logger)
-	GetMetrics(metric.Meter) []metric.Observable
+	GetMetrics(api.Meter) []api.Observable
+	Init(zerolog.Logger)
 }
 
 type Provider interface {
@@ -88,8 +90,8 @@ type BaseProvider struct {
 }
 
 type NuvlaContext struct {
-	Id    string `json:"id"`
-	State string `json:"state"`
+	Id       string `json:"nuvlaedge-uuid"`
+	Endpoint string `json:"endpoint"`
 }
 
 func CommonProvideNuvlaOrchestratorInfo(ctx context.Context, nuvlaContextFile string, oic *OrchInfoCollector, logger zerolog.Logger) {
@@ -113,6 +115,5 @@ func CommonProvideNuvlaOrchestratorInfo(ctx context.Context, nuvlaContextFile st
 	oic.Type = "nuvla"
 	oic.AgentId = nuvlaObj.Id
 	oic.AgentName = nuvlaObj.Id
-	oic.ClusterId = nuvlaObj.Id
 
 }

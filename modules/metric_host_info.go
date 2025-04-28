@@ -1,6 +1,6 @@
 /*
-ICOS Telemetruum Agent
-Copyright © 2022-2024 Engineering Ingegneria Informatica S.p.A.
+ICOS Telemetruum Leaf Exporter
+Copyright © 2022 - 2025 Engineering Ingegneria Informatica S.p.A.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,7 +28,6 @@ import (
 	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-	api "go.opentelemetry.io/otel/metric"
 )
 
 var (
@@ -43,14 +42,17 @@ type HostInfoCollector struct {
 	Longitude string
 	Hostname  string
 	Id        string
+	gauge     metric.Int64ObservableGauge
+}
 
-	gauge metric.Int64ObservableGauge
+func (c *HostInfoCollector) Init(logger zerolog.Logger) {
+
 }
 
 func (c *HostInfoCollector) GetMetrics(meter metric.Meter) []metric.Observable {
 
 	if c.gauge == nil {
-		gauge, err := meter.Int64ObservableGauge("tlum_host_info", api.WithDescription("info about the host"))
+		gauge, err := meter.Int64ObservableGauge("tlum_host_info", metric.WithDescription("info about the host"))
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -60,15 +62,23 @@ func (c *HostInfoCollector) GetMetrics(meter metric.Meter) []metric.Observable {
 	return []metric.Observable{c.gauge}
 }
 
-func (c *HostInfoCollector) CreateObservations(ctx context.Context, o api.Observer, logger zerolog.Logger) {
-	opt := api.WithAttributes(
+func (c *HostInfoCollector) CreateObservations(ctx context.Context, o metric.Observer, logger zerolog.Logger) {
+
+	metricsAttributes := []attribute.KeyValue{
 		attribute.Key("os").String(c.Os),
 		attribute.Key("ip").String(c.Ip),
 		attribute.Key("arch").String(c.Arch),
 		attribute.Key("latitude").String(c.Latitutde),
 		attribute.Key("longitude").String(c.Longitude),
 		attribute.Key("hostname").String(c.Hostname),
-		attribute.Key("id").String(c.Id))
+
+		// ICOS: this is not used. The `icos_host_id` label is set by OTEL
+		// collector. However they should correspond because the same logic is used
+		// TODO: add this to all metrics?
+		attribute.Key("tlum_host_id").String(c.Id),
+	}
+
+	opt := metric.WithAttributeSet(attribute.NewSet(metricsAttributes...))
 
 	o.ObserveInt64(c.gauge, 1, opt)
 }

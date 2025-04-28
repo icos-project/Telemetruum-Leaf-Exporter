@@ -1,4 +1,24 @@
-module telemetruum/agent
+//
+// ICOS Telemetruum Leaf Exporter
+// Copyright © 2022 - 2025 Engineering Ingegneria Informatica S.p.A.
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// 
+// http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// 
+// This work has received funding from the European Union's HORIZON research
+// and innovation programme under grant agreement No. 101070177.
+//
+
+module telemetruum/leaf-exporter
 
 go 1.21.3
 
@@ -12,6 +32,7 @@ require (
 	github.com/Microsoft/go-winio v0.4.14 // indirect
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751 // indirect
 	github.com/cenkalti/backoff/v4 v4.2.1 // indirect
+	github.com/digitalocean/go-smbios v0.0.0-20180907143718-390a4f403a8e // indirect
 	github.com/distribution/reference v0.5.0 // indirect
 	github.com/docker/go-connections v0.5.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
@@ -39,7 +60,6 @@ require (
 )
 
 require (
-	github.com/alecthomas/kingpin v2.2.6+incompatible
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -47,6 +67,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/docker/docker v25.0.4+incompatible
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
+	github.com/fenglyu/go-dmidecode v0.0.0-20220417074508-03f52eb45fe9
 	github.com/go-logr/logr v1.4.1 // indirect
 	github.com/go-openapi/jsonpointer v0.19.6 // indirect
 	github.com/go-openapi/jsonreference v0.20.2 // indirect

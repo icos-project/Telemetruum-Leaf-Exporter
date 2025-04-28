@@ -18,15 +18,19 @@
 # and innovation programme under grant agreement No. 101070177.
 #
 
-FROM debian:stable-slim
+{ pkgs, ... }:
+{
+  languages.go.enable = true;
 
-ARG CUSTOM_PLATFORM_SLUG=
+  scripts.build.exec = ''
+    go build -o ./output/telemetruum-leaf-exporter
+  '';
 
-RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates
+  scripts.run-dev-187.exec = ''
+    POD_NAME=devpod NAMESPACE=icos-system NODE_NAME=node1 go run . --kube-config=/data/ICOS/infra/workspace-icos/ncsrd/staging/cluster_187/.credentials/cluster.kubeconfig --path-rootfs `pwd`/testrootfs --no-docker
+  '';
 
-RUN update-ca-certificates
-
-COPY ./output/telemetruum-leaf-exporter-$CUSTOM_PLATFORM_SLUG /telemetruum-leaf-exporter
-
-ENTRYPOINT ["/telemetruum-leaf-exporter", "serve"]
+  scripts.run-dev.exec = ''
+    go run . --path-rootfs `pwd`/testrootfs
+  '';
+}

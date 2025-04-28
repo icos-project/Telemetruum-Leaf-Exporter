@@ -1,6 +1,6 @@
 /*
-ICOS Telemetruum Agent
-Copyright © 2022-2024 Engineering Ingegneria Informatica S.p.A.
+ICOS Telemetruum Leaf Exporter
+Copyright © 2022 - 2025 Engineering Ingegneria Informatica S.p.A.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,7 +27,6 @@ import (
 	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-	api "go.opentelemetry.io/otel/metric"
 )
 
 type Peripheral struct {
@@ -41,10 +40,14 @@ type NodeMountedCollector struct {
 	gauge               metric.Int64ObservableGauge
 }
 
+func (c *NodeMountedCollector) Init(logger zerolog.Logger) {
+
+}
+
 func (c *NodeMountedCollector) GetMetrics(meter metric.Meter) []metric.Observable {
 
 	if c.gauge == nil {
-		gauge, err := meter.Int64ObservableGauge("node_mounted", api.WithDescription("info about the attached peripherals"))
+		gauge, err := meter.Int64ObservableGauge("node_mounted", metric.WithDescription("info about the attached peripherals"))
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -54,10 +57,10 @@ func (c *NodeMountedCollector) GetMetrics(meter metric.Meter) []metric.Observabl
 	return []metric.Observable{c.gauge}
 }
 
-func (c *NodeMountedCollector) CreateObservations(ctx context.Context, o api.Observer, logger zerolog.Logger) {
+func (c *NodeMountedCollector) CreateObservations(ctx context.Context, o metric.Observer, logger zerolog.Logger) {
 
 	for _, p := range c.AttachedPeripherals {
-		opt := api.WithAttributes(
+		opt := metric.WithAttributes(
 			attribute.Key("device").String(p.Device),
 			attribute.Key("resource_path").String(p.ResourcePath))
 

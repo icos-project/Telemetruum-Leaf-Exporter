@@ -1,6 +1,6 @@
-# Telemetruum Agent
+# Telemetruum Leaf Exporter
 
-The Telemetruum Agent is a component of the ICOS Logging and Telemetry subsystem. This component is deployed in the ICOS Edge nodes and generates some metrics (see below) that are useful to ICOS for the matchmaking and orchestration processes.
+The Telemetruum Leaf Exporter is a component of the ICOS Logging and Telemetry subsystem. This component is deployed in the ICOS Edge nodes and generates some metrics (see below) that are useful to ICOS for the matchmaking and orchestration processes.
 
 
 ## Metrics
@@ -8,12 +8,28 @@ The Telemetruum Agent is a component of the ICOS Logging and Telemetry subsystem
 
 | name          | labels                                          | meaning                                                                                         |
 | ------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| host_info     | os, ip, arch, latitude, longitude, hostname, id | publish information about the host                                                              |
+| host_info     | os, ip, arch, latitude, longitude, hostname, id, icos_* | publish information about the host                                                              |
 | orch_info     | type, agent-id, agent-name, cluster_id          | publish information about the multi-cluster orchestrator (i.e. Nuvla or OCM)                    |
-| workload_info | name, cluster_id, host_id                       | publish information on the workloads (i.e. containers) running in the host                      |
+| workload_info | name, cluster_id, host_id, icos_*               | publish information on the workloads (i.e. containers) running in the host                      |
+| runtime_info   | type, version, icos_*                           | publish information about the runtime (Docker/Kubernetes) running on the node.                  |
 | node_mounted  | device, resource_path                           | publish information about the peripherals attached to this host. This is enabled for Nuvla only |
 
 
+### Labels
+
+```
+Labels for the WorkloadInfo metric:
+- Kubernetes from node labels
+- Docker from engine labels
+- from /etc/machine-labels
+<prefix>.icos.eu/<label>=<value>  --> <prefix>_<label>=<value>
+
+Labels for the HostLabels metric:
+- k8s pod annotations
+- Docker container labels
+icos.eu/label=value --> <label>=<value>
+
+```
 
 ## Build
 
@@ -32,7 +48,7 @@ docker build --build-arg CUSTOM_PLATFORM_SLUG=local .
 
 ## Usage
 
-The Telmetruum Agent can be configured passing arguments in its command line. The flags can be used to enable/disable specific features (e.g. Kubernetes provider) and to configure some aspects of the provides (e.g. Kubernetes API Server endpoint). 
+The Telmetruum Leaf Exporter can be configured passing arguments in its command line. The flags can be used to enable/disable specific features (e.g. Kubernetes provider) and to configure some aspects of the provides (e.g. Kubernetes API Server endpoint). 
 
 ```
 usage: main [<flags>]
@@ -53,9 +69,15 @@ Flags:
   --node-mount-interval="1m"     Interval for Node Mounted Metrics
 ```
 
+Kubernetes provider expects the following env variables
+```
+NODE_NAME used to filter data by node
+NAMESPACE and POD_NAME used in the leader election algorithm
+TLUM_K8S_LEASE_NAME_PREFIX (optional) to customize the name of the lease created to elect one leader instance that export cluster level metrics
+```
 
 # Legal
-The Telemetruum Agent is released under the Apache 2.0 license.
-Copyright © 2022-2024 Engineering Ingegneria Informatica S.p.A. All rights reserved.
+The ICOS Telemetruum Leaf Exporter is released under the Apache 2.0 license.
+Copyright © 2022 - 2025 Engineering Ingegneria Informatica S.p.A. All rights reserved.
 
 🇪🇺 This work has received funding from the European Union's HORIZON research and innovation programme under grant agreement No. 101070177.

@@ -1,5 +1,7 @@
-telemetruum-agent
 test-hostfs/
+testrootfs/
 output/
 test/
 report.xml
+.devenv
+.devenv.flake.nix

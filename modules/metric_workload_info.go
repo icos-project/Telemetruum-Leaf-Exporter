@@ -1,6 +1,6 @@
 /*
-ICOS Telemetruum Agent
-Copyright © 2022-2024 Engineering Ingegneria Informatica S.p.A.
+ICOS Telemetruum Leaf Exporter
+Copyright © 2022 - 2025 Engineering Ingegneria Informatica S.p.A.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,26 +27,53 @@ import (
 	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-	api "go.opentelemetry.io/otel/metric"
 )
+
+type WorkloadStatus string
+
+const (
+	Pending WorkloadStatus = "pending"
+	Running WorkloadStatus = "running"
+	Exited  WorkloadStatus = "exited"
+	Failed  WorkloadStatus = "failed"
+	Unknown WorkloadStatus = "unknown"
+)
+
+func (s WorkloadStatus) String() string {
+	switch s {
+	case Pending:
+		return "pending"
+	case Running:
+		return "running"
+	case Exited:
+		return "exited"
+	case Failed:
+		return "failed"
+	}
+	return "unknown"
+}
 
 type WorkloadInfo struct {
 	Name        string
+	Id          string
 	Type        string
+	Status      WorkloadStatus
 	Annotations map[string]string
 }
 
 type WorkloadInfoCollector struct {
 	RunningWorkloads []*WorkloadInfo
-	HostId           string
-	ClusterId        string
 	gauge            metric.Int64ObservableGauge
+}
+
+func (c *WorkloadInfoCollector) Init(logger zerolog.Logger) {
+
 }
 
 func (c *WorkloadInfoCollector) GetMetrics(meter metric.Meter) []metric.Observable {
 
 	if c.gauge == nil {
-		gauge, err := meter.Int64ObservableGauge("tlum_workload_info", api.WithDescription("info about the workloads running in the node"))
+		gauge, err := meter.Int64ObservableGauge("tlum_workload_info", metric.WithDescription("info about the workloads running in the node"))
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -56,21 +83,26 @@ func (c *WorkloadInfoCollector) GetMetrics(meter metric.Meter) []metric.Observab
 	return []metric.Observable{c.gauge}
 }
 
-func (c *WorkloadInfoCollector) CreateObservations(ctx context.Context, o api.Observer, logger zerolog.Logger) {
+func (c *WorkloadInfoCollector) CreateObservations(ctx context.Context, o metric.Observer, logger zerolog.Logger) {
 
 	for _, w := range c.RunningWorkloads {
 
 		var annotationAttributes []attribute.KeyValue
 
 		annotationAttributes = append(annotationAttributes, attribute.Key("name").String(w.Name))
-		annotationAttributes = append(annotationAttributes, attribute.Key("cluster_id").String(c.ClusterId))
-		annotationAttributes = append(annotationAttributes, attribute.Key("host_id").String(c.HostId))
+		annotationAttributes = append(annotationAttributes, attribute.Key("status").String(w.Status.String()))
+		annotationAttributes = append(annotationAttributes, attribute.Key("id").String(w.Id))
+
+		// this is not required because the "icos_host_id" label is added by the otel collector
+		//annotationAttributes = append(annotationAttributes, attribute.Key("host_id").String(c.HostId))
+		// commented because it is not sure that it is needed
+		//annotationAttributes = append(annotationAttributes, attribute.Key("cluster_id").String(c.ClusterId))
 
 		for k, v := range w.Annotations {
 			annotationAttributes = append(annotationAttributes, attribute.Key(k).String(v))
 		}
 
-		opt := api.WithAttributeSet(attribute.NewSet(annotationAttributes...))
+		opt := metric.WithAttributeSet(attribute.NewSet(annotationAttributes...))
 
 		o.ObserveInt64(c.gauge, 1, opt)
 	}

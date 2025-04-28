@@ -1,6 +1,6 @@
 /*
-ICOS Telemetruum Agent
-Copyright © 2022-2024 Engineering Ingegneria Informatica S.p.A.
+ICOS Telemetruum Leaf Exporter
+Copyright © 2022 - 2025 Engineering Ingegneria Informatica S.p.A.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,7 +28,8 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
-	"telemetruum/agent/modules"
+	"telemetruum/leaf-exporter/cli"
+	"telemetruum/leaf-exporter/modules"
 	"time"
 
 	"github.com/alecthomas/kingpin/v2"
@@ -42,21 +43,13 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric"
 )
 
-var (
-	bindAddress          = kingpin.Flag("bind", "Bind address").Default(":2545").String()
-	dockerEnabled        = kingpin.Flag("docker", "Enable Docker Provider").Default("true").Bool()
-	kubernetesEnabled    = kingpin.Flag("kubernetes", "Enable Kubernetes Provider").Default("true").Bool()
-	systemEnabled        = kingpin.Flag("system", "Enable System Provider").Default("true").Bool()
-	hostInfoInterval     = kingpin.Flag("host-info-interval", "Interval for Host Info Metrics").Default("5m").String()
-	orchInfoInterval     = kingpin.Flag("orch-info-interval", "Interval for Orchestrator Info Metrics").Default("2m").String()
-	workloadInfoInterval = kingpin.Flag("workload-info-interval", "Interval for Workload Info Metrics").Default("1m").String()
-	nodeMountedInterval  = kingpin.Flag("node-mount-interval", "Interval for Node Mounted Metrics").Default("1m").String()
-)
+
 
 func serveMetrics(logger zerolog.Logger) {
-	logger.Info().Msgf("serving metrics at %s/metrics", *bindAddress)
+
+	logger.Info().Msgf("serving metrics at %s/metrics", *cli.BindAddress)
 	http.Handle("/metrics", promhttp.Handler())
-	err := http.ListenAndServe(*bindAddress, nil) //nolint:gosec // Ignoring G114: Use of net/http serve function that has no support for setting timeouts.
+	err := http.ListenAndServe(*cli.BindAddress, nil) //nolint:gosec // Ignoring G114: Use of net/http serve function that has no support for setting timeouts.
 	if err != nil {
 		fmt.Printf("error serving http: %v", err)
 		return
@@ -75,14 +68,29 @@ func setupOtel() metric2.Meter {
 		log.Fatal()
 	}
 	provider := metric.NewMeterProvider(metric.WithReader(exporter))
-	meter := provider.Meter("telemetruum-agent")
+	meter := provider.Meter("telemetruum-leaf-exporter")
 
 	return meter
 }
 
 func main() {
-	kingpin.Parse()
 
+	switch kingpin.MustParse(cli.App.Parse(os.Args[1:])) {
+	case cli.Serve.FullCommand():
+		serveCommand()
+
+	case cli.PrintHostId.FullCommand():
+		logger := zerolog.New(
+			zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC822},
+		).Level(zerolog.FatalLevel).With().Timestamp().Logger()
+		fileProvider := &modules.FileProvider{
+			BaseProvider: modules.BaseProvider{Logger: logger.With().Str("Provider", "File").Logger()}}
+
+		fmt.Print(fileProvider.GetHostId())
+	}
+}
+
+func serveCommand() {
 	logger := zerolog.New(
 		zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC822},
 	).Level(zerolog.TraceLevel).With().Timestamp().Logger()
@@ -95,37 +103,62 @@ func main() {
 	meter := setupOtel()
 
 	// Setup Metric Collectors
-	hicr_interval, _ := time.ParseDuration(*hostInfoInterval)
+
+	icr := &modules.AsyncCollectorRunner[*modules.InfoCollector]{
+		Collector: &modules.InfoCollector{},
+		Logger:    logger.With().Str("Collector", "HostInfo").Logger()}
+
+	hicr_interval, _ := time.ParseDuration(*cli.HostInfoInterval)
 	hicr := &modules.AsyncCollectorRunner[*modules.HostInfoCollector]{
 		Collector: &modules.HostInfoCollector{},
 		Interval:  hicr_interval,
 		Logger:    logger.With().Str("Collector", "HostInfo").Logger()}
 
-	oicr_interval, _ := time.ParseDuration(*orchInfoInterval)
+	oicr_interval, _ := time.ParseDuration(*cli.OrchInfoInterval)
 	oicr := &modules.AsyncCollectorRunner[*modules.OrchInfoCollector]{
 		Collector: &modules.OrchInfoCollector{},
 		Interval:  oicr_interval,
 		Logger:    logger.With().Str("Collector", "OrchInfo").Logger()}
 
-	wicr_interval, _ := time.ParseDuration(*workloadInfoInterval)
+	wicr_interval, _ := time.ParseDuration(*cli.WorkloadInfoInterval)
 	wicr := &modules.AsyncCollectorRunner[*modules.WorkloadInfoCollector]{
 		Collector: &modules.WorkloadInfoCollector{},
 		Interval:  wicr_interval,
 		Logger:    logger.With().Str("Collector", "WorkloadInfo").Logger()}
 
-	pecr_interval, _ := time.ParseDuration(*nodeMountedInterval)
+	pecr_interval, _ := time.ParseDuration(*cli.NodeMountedInterval)
 	pecr := &modules.AsyncCollectorRunner[*modules.NodeMountedCollector]{
 		Collector: &modules.NodeMountedCollector{},
 		Interval:  pecr_interval,
 		Logger:    logger.With().Str("Collector", "NodeMounted").Logger()}
-	// Setup Providers
 
+	ricr_interval, _ := time.ParseDuration(*cli.RuntimeInfoInterval)
+	ricr := &modules.AsyncCollectorRunner[*modules.RuntimeInfoCollector]{
+		Collector: &modules.RuntimeInfoCollector{},
+		Interval:  ricr_interval,
+		Logger:    logger.With().Str("Collector", "RuntimeInfo").Logger()}
+
+	hlcr_interval, _ := time.ParseDuration(*cli.HostLabelsInterval)
+	hlcr := &modules.AsyncCollectorRunner[*modules.HostLabelsCollector]{
+		Collector: &modules.HostLabelsCollector{Labels: map[string]string{}},
+		Interval:  hlcr_interval,
+		Logger:    logger.With().Str("Collector", "Labels").Logger()}
+
+	vncr_interval, _ := time.ParseDuration(*cli.VnetInfoInterval)
+	vncr := &modules.AsyncCollectorRunner[*modules.VNetInfoCollector]{
+		Collector: &modules.VNetInfoCollector{},
+		Interval:  vncr_interval,
+		Logger:    logger.With().Str("Collector", "VNet").Logger()}
+
+	// Setup Providers
 	var kubernetesProvider *modules.KubernetesProvider
 	var systemProvider *modules.SystemProvider
+	var fileProvider *modules.FileProvider
 	var dockerProvider *modules.DockerProvider
+	var ipinfoProvider *modules.IPInfoProvider
 	var providerErr error
 
-	if *kubernetesEnabled {
+	if *cli.KubernetesEnabled {
 		kubernetesProvider, providerErr = modules.InizializeKubernetesProvider(logger.With().Str("Provider", "Kubernetes").Logger())
 		if providerErr != nil {
 			logger.Warn().Msgf("Error initializing Kubernetes (\"%s\"). The Kubernetes provider will not be used", providerErr)
@@ -137,13 +170,28 @@ func main() {
 			oicr.AppendAsyncDataProvider(kubernetesProvider.ProvideOCMOrchInfo)
 			wicr.AppendAsyncDataProvider(kubernetesProvider.ProvideWorkloadInfo)
 			oicr.AppendAsyncDataProvider(kubernetesProvider.ProvideNuvlaOrchestratorInfo)
+			ricr.AppendAsyncDataProvider(kubernetesProvider.ProvideRuntimeOrchestartorInfo)
+			hlcr.AppendAsyncDataProvider(kubernetesProvider.ProvideLabels)
+			vncr.AppendAsyncDataProvider(kubernetesProvider.ProvideVNetInfo)
+
+			// after the leader has been elected, run the following collectors that did not run
+			// beofre because the leader was not elected yet. Without this, the collector might
+			// run a long time after the leader was elected (<= collector interval)
+			kubernetesProvider.OnLeaderElected(func(iAmTheLeader bool) {
+				if iAmTheLeader {
+					logger.Info().Msg("We are the leader, running the collector that are affected without waiting for their interval")
+					kubernetesProvider.ProvideOCMOrchInfo(context.TODO(), oicr.Collector)
+					kubernetesProvider.ProvideVNetInfo(context.TODO(), vncr.Collector)
+				}
+			})
+
 		}
 
 	} else {
 		logger.Debug().Msg("Kubernetes Provider disabled")
 	}
 
-	if *systemEnabled {
+	if *cli.SystemEnabled {
 		systemProvider = &modules.SystemProvider{
 			BaseProvider: modules.BaseProvider{Logger: logger.With().Str("Provider", "System").Logger()}}
 
@@ -151,13 +199,39 @@ func main() {
 		logger.Info().Msg("System Provider successfully started")
 
 		hicr.AppendAsyncDataProvider(systemProvider.ProvideHostInfo)
-		wicr.AppendAsyncDataProvider(systemProvider.ProvideWorkloadInfoLabels)
 
 	} else {
 		logger.Debug().Msg("System Provider disabled")
 	}
 
-	if *dockerEnabled {
+	if *cli.IpinfoEnabled {
+		ipinfoProvider = &modules.IPInfoProvider{
+			BaseProvider: modules.BaseProvider{Logger: logger.With().Str("Provider", "IPInfo").Logger()}}
+
+		fileProvider.Start(ctx, wg)
+		logger.Info().Msg("IPInfo Provider successfully started")
+
+		hicr.AppendAsyncDataProvider(ipinfoProvider.ProvideHostInfo)
+
+	} else {
+		logger.Debug().Msg("IPInfo Provider disabled")
+	}
+
+	if *cli.FileEnabled {
+		fileProvider = &modules.FileProvider{
+			BaseProvider: modules.BaseProvider{Logger: logger.With().Str("Provider", "File").Logger()}}
+
+		fileProvider.Start(ctx, wg)
+		logger.Info().Msg("File Provider successfully started")
+
+		hicr.AppendAsyncDataProvider(fileProvider.ProvideHostInfo)
+		hlcr.AppendAsyncDataProvider(fileProvider.ProvideLabels)
+
+	} else {
+		logger.Debug().Msg("File Provider disabled")
+	}
+
+	if *cli.DockerEnabled {
 		dockerProvider, providerErr = modules.InizializeDockerProvider(logger.With().Str("Provider", "Docker").Logger())
 		if providerErr != nil {
 			logger.Warn().Msgf("Error initializing Docker (\"%s\"). The Docker provider will not be used", providerErr)
@@ -168,6 +242,9 @@ func main() {
 			wicr.AppendAsyncDataProvider(dockerProvider.ProvideWorkloadInfo)
 			oicr.AppendAsyncDataProvider(dockerProvider.ProvideNuvlaOrchestratorInfo)
 			pecr.AppendAsyncDataProvider(dockerProvider.ProvideNuvlaAttachedPeripherals)
+			ricr.AppendAsyncDataProvider(dockerProvider.ProvideRuntimeOrchestartorInfo)
+			hlcr.AppendAsyncDataProvider(dockerProvider.ProvideLabels)
+
 		}
 	} else {
 		logger.Debug().Msg("Docker Provider disabled")
@@ -175,6 +252,8 @@ func main() {
 
 	// Start Metrics Collectors
 
+	icr.Init(meter)
+	icr.Start(context.TODO())
 	hicr.Init(meter)
 	hicr.Start(context.TODO())
 	oicr.Init(meter)
@@ -183,7 +262,12 @@ func main() {
 	wicr.Start(context.TODO())
 	pecr.Init(meter)
 	pecr.Start(context.TODO())
-
+	ricr.Init(meter)
+	ricr.Start(context.TODO())
+	hlcr.Init(meter)
+	hlcr.Start(context.TODO())
+	vncr.Init(meter)
+	vncr.Start(context.TODO())
 	go serveMetrics(logger)
 
 	<-ch

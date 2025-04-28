@@ -1,6 +1,6 @@
 /*
-ICOS Telemetruum Agent
-Copyright © 2022-2024 Engineering Ingegneria Informatica S.p.A.
+ICOS Telemetruum Leaf Exporter
+Copyright © 2022 - 2025 Engineering Ingegneria Informatica S.p.A.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,14 +27,13 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"telemetruum/leaf-exporter/cli"
 
 	"github.com/rs/zerolog"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 )
-
-var ()
 
 type DockerProvider struct {
 	BaseProvider
@@ -56,6 +55,24 @@ func InizializeDockerProvider(logger zerolog.Logger) (*DockerProvider, error) {
 func (kd *DockerProvider) Start(ctx context.Context, wg *sync.WaitGroup) {
 }
 
+func dockerStatus2WIStatus(dockerStatus string) WorkloadStatus {
+	switch dockerStatus {
+	case "created":
+		return Pending
+	case "restarting":
+		return Pending
+	case "paused":
+		return Pending
+	case "running":
+		return Running
+	case "exited":
+		return Exited
+	case "dead":
+		return Failed
+	}
+	return Unknown
+}
+
 func (kd *DockerProvider) ProvideWorkloadInfo(ctx context.Context, c *WorkloadInfoCollector) {
 	containers, err := kd.DockerClient.ContainerList(ctx, container.ListOptions{})
 	if err != nil {
@@ -63,8 +80,10 @@ func (kd *DockerProvider) ProvideWorkloadInfo(ctx context.Context, c *WorkloadIn
 	}
 	res := []*WorkloadInfo{}
 
+	kd.Logger.Debug().Msgf("Listing containers... found %d", len(containers))
+
 	for _, ctr := range containers {
-		wi := &WorkloadInfo{Name: ctr.Names[0], Annotations: map[string]string{}}
+		wi := &WorkloadInfo{Name: ctr.Names[0], Id: ctr.ID, Annotations: map[string]string{}, Status: dockerStatus2WIStatus(ctr.State)}
 		res = append(res, wi)
 
 		for k, v := range ctr.Labels {
@@ -73,15 +92,55 @@ func (kd *DockerProvider) ProvideWorkloadInfo(ctx context.Context, c *WorkloadIn
 				wi.Annotations[newK] = v
 			}
 		}
-
 	}
 
 	c.RunningWorkloads = res
-	c.ClusterId = kd.Id
+	//c.ClusterId = kd.Id
 }
 
 func (kd *DockerProvider) ProvideNuvlaOrchestratorInfo(ctx context.Context, oic *OrchInfoCollector) {
-	CommonProvideNuvlaOrchestratorInfo(ctx, filepath.Join(*pathRootFs, "/nuvla_peripherals/.context"), oic, kd.Logger)
+	// /var/lib/nuvlaedge/%s/data/nuvlaedge_session.json
+	CommonProvideNuvlaOrchestratorInfo(ctx, filepath.Join(*cli.PathRootFs, "/var/lib/docker/volumes/nuvlaedge_nuvlaedge-data/_data/nuvlaedge_session.json"), oic, kd.Logger)
+}
+
+func (kp *DockerProvider) ProvideLabels(ctx context.Context, hlc *HostLabelsCollector) {
+	info, err := kp.DockerClient.Info(ctx)
+	if err != nil {
+		kp.Logger.Error().Msg("Error getting Docker Server info")
+	} else {
+
+		for _, s := range info.Labels {
+			tokens := strings.Split(s, "=")
+			if len(tokens) != 2 {
+				kp.Logger.Error().Msgf("Error parsing label %s, expected two tokens, but got %d", s, len(tokens))
+				continue
+			}
+			if m2.MatchString(tokens[0]) {
+				newK := m2.ReplaceAllString(tokens[0], "$1")
+				hlc.Labels[newK] = tokens[1]
+			}
+		}
+	}
+}
+
+func (kd *DockerProvider) ProvideRuntimeOrchestartorInfo(ctx context.Context, ric *RuntimeInfoCollector) {
+	ric.Type = "Docker"
+	version, err := kd.DockerClient.ServerVersion(ctx)
+
+	if err != nil {
+		kd.Logger.Error().Msg("Error getting Docker Server version")
+		return
+	}
+
+	info, err := kd.DockerClient.Info(ctx)
+	if err != nil {
+		kd.Logger.Error().Msg("Error getting Docker Server Node Id")
+		return
+	}
+
+	ric.Version = version.Version
+	ric.NodeName = info.Swarm.NodeID
+	ric.ClusterId = info.Swarm.Cluster.ID
 }
 
 type NuvlaPeripheralFileStruct struct {
@@ -94,7 +153,9 @@ type NuvlaPeripheralFileStruct struct {
 
 func (kd *DockerProvider) ProvideNuvlaAttachedPeripherals(ctx context.Context, oic *NodeMountedCollector) {
 
-	peripheral_files := filepath.Join(*pathRootFs, "/nuvla_peripherals/.peripherals/local_peripherals.json")
+	// peripherals are taken from the nuvla edge cache because NFD is not running in Docker nodes. In Kubernetes
+	// nodes, the same data is produced by NFD and scraped by the Telemetruum Leaf
+	peripheral_files := filepath.Join(*cli.PathRootFs, "/var/lib/docker/volumes/nuvlaedge_nuvlaedge-data/_data/.peripherals/local_peripherals.json")
 
 	nuvlaFile, err := os.ReadFile(peripheral_files) // just pass the file name
 	if err != nil {

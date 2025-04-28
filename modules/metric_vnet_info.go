@@ -29,43 +29,40 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-type OrchInfoCollector struct {
-	Type      string
-	AgentId   string
-	AgentName string
-	gauge     metric.Int64ObservableGauge
-	gaugeOld  metric.Int64ObservableGauge
+type VNetInfoCollector struct {
+	Provider string
+	Node     string
+	Name     string
+	gauge    metric.Int64ObservableGauge
 }
 
-func (c *OrchInfoCollector) Init(logger zerolog.Logger) {
+func (c *VNetInfoCollector) Init(logger zerolog.Logger) {
 
 }
 
-func (c *OrchInfoCollector) GetMetrics(meter metric.Meter) []metric.Observable {
+func (c *VNetInfoCollector) GetMetrics(meter metric.Meter) []metric.Observable {
 
 	if c.gauge == nil {
-		gauge, err := meter.Int64ObservableGauge("tlum_orch_info", metric.WithDescription("info about the orchestrator"))
+		gauge, err := meter.Int64ObservableGauge("tlum_vnet_info", metric.WithDescription("info about the virtual network"))
 		if err != nil {
 			log.Fatal(err)
 		}
 		c.gauge = gauge
-
-		gaugeOld, err := meter.Int64ObservableGauge("tlum_ocm_agent_info", metric.WithDescription("info about the orchestrator. Legacy, do not use"))
-		if err != nil {
-			log.Fatal(err)
-		}
-		c.gaugeOld = gaugeOld
 	}
 
-	return []metric.Observable{c.gauge, c.gaugeOld}
+	return []metric.Observable{c.gauge}
 }
 
-func (c *OrchInfoCollector) CreateObservations(ctx context.Context, o metric.Observer, logger zerolog.Logger) {
-	if c.Type != "" {
-		opt := metric.WithAttributes(
-			attribute.Key("type").String(c.Type),
-			attribute.Key("agent-id").String(c.AgentId),
-			attribute.Key("agent-name").String(c.AgentName))
+func (c *VNetInfoCollector) CreateObservations(ctx context.Context, o metric.Observer, logger zerolog.Logger) {
+	if c.Provider != "" {
+
+		var metricsAttributes []attribute.KeyValue
+
+		metricsAttributes = append(metricsAttributes, attribute.Key("type").String(c.Provider))
+		metricsAttributes = append(metricsAttributes, attribute.Key("vnet_name").String(c.Name))
+		metricsAttributes = append(metricsAttributes, attribute.Key("vnet_node").String(c.Node))
+
+		opt := metric.WithAttributeSet(attribute.NewSet(metricsAttributes...))
 
 		o.ObserveInt64(c.gauge, 1, opt)
 	}
